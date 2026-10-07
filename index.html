@@ -27,6 +27,12 @@ button.g{background:transparent;border:1px solid #2a4590;font-weight:500}
 button:disabled{opacity:.6}
 .err{color:#ff6b7d;min-height:1.2em;font-size:13px}
 .hidden{display:none!important}
+.ld{display:flex;align-items:center;gap:10px;justify-content:center}
+.ld.hidden{display:none!important}
+.spin{flex:none;animation:ld-rot 1.6s linear infinite}
+.spin circle{transform-origin:25px 25px;animation:ld-dash 1.6s cubic-bezier(.45,.05,.35,1) infinite}
+@keyframes ld-rot{to{transform:rotate(360deg)}}
+@keyframes ld-dash{0%{stroke-dasharray:4 96;stroke-dashoffset:0}50%{stroke-dasharray:62 38;stroke-dashoffset:-20}100%{stroke-dasharray:4 96;stroke-dashoffset:-96}}
 </style>
 </head>
 <body>
@@ -47,7 +53,7 @@ button:disabled{opacity:.6}
     <button type="button" id="cx" class="g">Abbrechen</button>
     <p class="err" id="e2"></p>
   </form>
-  <p id="ld" class="hidden">lädt…</p>
+  <p id="ld" class="hidden ld"><svg class="spin" width="22" height="22" viewBox="0 0 50 50" aria-hidden="true"><defs><linearGradient id="spinG" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5aa2ff"/><stop offset=".5" stop-color="#3584ff"/><stop offset="1" stop-color="#1b5ff0"/></linearGradient></defs><circle cx="25" cy="25" r="20" fill="none" stroke="url(#spinG)" stroke-width="5" stroke-linecap="round" pathLength="100"/></svg><span>lädt…</span></p>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="config.js"></script>
