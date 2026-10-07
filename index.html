@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="de-CH">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#071334">
+<meta name="robots" content="noindex,nofollow">
+<title>Personal Dashboard</title>
+<script>try{var t=localStorage.getItem("theme");if(t&&t!=="blue")document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="favicon.ico" sizes="48x48">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style id="shellcss">
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%}
+body{font:15px/1.4 Inter,system-ui,sans-serif;color:#e8eefc;background:radial-gradient(1200px 700px at 20% -10%,#12307a55,transparent),#071334;display:grid;place-items:center;min-height:100vh;padding:16px}
+.box{width:100%;max-width:340px;display:grid;gap:10px;padding:26px;border-radius:18px;background:#0d1d4acc;border:1px solid #2a4590aa;box-shadow:0 20px 60px #0008}
+h1{margin:0 0 2px;font-size:20px}
+p{margin:0;color:#9db0dd}
+input,button{font:inherit;border-radius:12px;padding:12px 14px;border:1px solid #2a4590;background:#081538;color:inherit;width:100%}
+button{cursor:pointer;background:linear-gradient(160deg,#3584ff,#1b5ff0);border:0;font-weight:600}
+button.g{background:transparent;border:1px solid #2a4590;font-weight:500}
+button:disabled{opacity:.6}
+.err{color:#ff6b7d;min-height:1.2em;font-size:13px}
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+<div class="box" id="box">
+  <form id="f1" class="box" style="padding:0;border:0;background:none;box-shadow:none">
+    <h1>Anmelden</h1>
+    <input id="em" type="email" placeholder="E-Mail" autocomplete="username" required>
+    <input id="pw" type="password" placeholder="Passwort" autocomplete="current-password" required minlength="8">
+    <button type="submit">Anmelden</button>
+    <button type="button" id="pk" class="g hidden">Mit Face ID / Passkey anmelden</button>
+    <p class="err" id="e1"></p>
+  </form>
+  <form id="f2" class="box hidden" style="padding:0;border:0;background:none;box-shadow:none" autocomplete="off">
+    <h1>Bestätigung</h1>
+    <p>Code aus deiner Authenticator-App eingeben.</p>
+    <input id="cd" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" placeholder="6-stelliger Code" required>
+    <button type="submit">Bestätigen</button>
+    <button type="button" id="cx" class="g">Abbrechen</button>
+    <p class="err" id="e2"></p>
+  </form>
+  <p id="ld" class="hidden">lädt…</p>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<script>
+/* Öffentliche Login-Maske. Der eigentliche App-Code liegt privat in der Datenbank und wird erst nach Anmeldung (und 2FA) geladen. */
+(() => {
+  const $ = s => document.querySelector(s), K = window.CONFIG;
+  const sb = supabase.createClient(K.SUPABASE_URL, K.SUPABASE_ANON_KEY);
+  const show = w => { ["#f1", "#f2", "#ld"].forEach(s => $(s).classList.toggle("hidden", s !== w)); };
+  let booted = false;
+  const amr = async () => {
+    try {
+      const { data } = await sb.auth.getSession();
+      const p = JSON.parse(atob(data.session.access_token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+      return (p.amr || []).some(x => /passkey|webauthn/i.test(x.method));
+    } catch { return false; }
+  };
+  const needMfa = async () => {
+    const { data } = await sb.auth.mfa.getAuthenticatorAssuranceLevel();
+    return !!data && data.nextLevel === "aal2" && data.currentLevel !== "aal2";
+  };
+  async function boot() {
+    if (booted) return; booted = true; show("#ld");
+    const { data, error } = await sb.from("app_files").select("slug,content").in("slug", ["html", "css", "js"]);
+    const f = Object.fromEntries((data || []).map(r => [r.slug, r.content]));
+    if (error || !f.html || !f.js) { booted = false; show("#f1"); $("#e1").textContent = "Laden fehlgeschlagen. Bitte neu anmelden."; return; }
+    sb.auth.stopAutoRefresh();
+    $("#shellcss").remove(); const st = document.createElement("style"); st.textContent = f.css || ""; document.head.append(st);
+    document.body.removeAttribute("style"); document.body.innerHTML = f.html;
+    const sc = document.createElement("script"); sc.textContent = f.js; document.body.append(sc);
+  }
+  async function check() {
+    if (booted) return;
+    if (!(await amr()) && await needMfa()) { show("#f2"); $("#cd").value = ""; $("#cd").focus(); return; }
+    boot();
+  }
+  if (typeof sb.auth.registerPasskey === "function" && window.PublicKeyCredential) $("#pk").classList.remove("hidden");
+  $("#f1").addEventListener("submit", async e => {
+    e.preventDefault(); $("#e1").textContent = "";
+    const { error } = await sb.auth.signInWithPassword({ email: $("#em").value.trim(), password: $("#pw").value });
+    if (error) $("#e1").textContent = "Login fehlgeschlagen.";
+  });
+  $("#pk").addEventListener("click", async () => {
+    $("#e1").textContent = "";
+    const { error } = await sb.auth.signInWithPasskey();
+    if (error) $("#e1").textContent = "Passkey-Anmeldung abgebrochen oder fehlgeschlagen. Melde dich mit Passwort an.";
+  });
+  $("#f2").addEventListener("submit", async e => {
+    e.preventDefault(); const b = e.submitter; if (b) b.disabled = true;
+    const { data: fl } = await sb.auth.mfa.listFactors(); const fa = fl?.totp?.[0];
+    const { error } = fa ? await sb.auth.mfa.challengeAndVerify({ factorId: fa.id, code: $("#cd").value.trim() }) : { error: true };
+    if (b) b.disabled = false;
+    if (error) { $("#e2").textContent = "Code falsch oder abgelaufen."; $("#cd").select(); return; }
+    check();
+  });
+  $("#cx").addEventListener("click", () => sb.auth.signOut());
+  sb.auth.onAuthStateChange((_ev, session) => { if (session) setTimeout(check, 0); else if (!booted) show("#f1"); });
+})();
+</script>
+</body>
+</html>
